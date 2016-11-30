@@ -13,7 +13,7 @@ using Jarvis.DocumentStore.Core.Storage;
 using Jarvis.DocumentStore.Shared.Model;
 using Jarvis.DocumentStore.Core.Jobs;
 using Jarvis.DocumentStore.Core.Jobs.QueueManager;
-using MongoDB.Driver.Builders;
+
 using MongoDB.Driver;
 
 namespace Jarvis.DocumentStore.Core.EventHandlers

@@ -8,19 +8,21 @@ using Jarvis.DocumentStore.Core.Model;
 using Jarvis.Framework.Shared.IdentitySupport;
 using MongoDB.Bson;
 using MongoDB.Driver;
-using MongoDB.Driver.GridFS;
 using Path = Jarvis.DocumentStore.Shared.Helpers.DsPath;
 using File = Jarvis.DocumentStore.Shared.Helpers.DsFile;
+using MongoDB.Driver.GridFS;
+
 namespace Jarvis.DocumentStore.Core.Storage
 {
     public class GridFsBlobStore : IBlobStore
     {
         public ILogger Logger { get; set; }
-        readonly MongoDatabase _database;
+        readonly IMongoDatabase _database;
         private readonly ICounterService _counterService;
-        readonly ConcurrentDictionary<DocumentFormat, MongoGridFS> _fs = new ConcurrentDictionary<DocumentFormat, MongoGridFS>();
+        readonly ConcurrentDictionary<DocumentFormat, GridFSBucket> _fs = 
+            new ConcurrentDictionary<DocumentFormat, GridFSBucket>();
 
-        public GridFsBlobStore(MongoDatabase database, ICounterService counterService)
+        public GridFsBlobStore(IMongoDatabase database, ICounterService counterService)
         {
             _database = database;
             _counterService = counterService;
@@ -30,7 +32,10 @@ namespace Jarvis.DocumentStore.Core.Storage
 
         private void LoadFormatsFromDatabase()
         {
-            var cnames = _database.GetCollectionNames().ToArray();
+            var cnames = _database.ListCollections()
+                .ToEnumerable()
+                .Select(doc => doc["name"].AsString)
+                .ToArray();
             var names = cnames.Where(x => x.EndsWith(".files")).Select(x => x.Substring(0, x.LastIndexOf(".files"))).ToArray();
 
             foreach (var name in names)
@@ -43,12 +48,14 @@ namespace Jarvis.DocumentStore.Core.Storage
         {
             var blobId = new BlobId(format, _counterService.GetNext(format));
             var gridFs = GetGridFsByFormat(format);
-            Logger.DebugFormat("Creating file {0} on {1}", blobId, gridFs.DatabaseName);
-            var stream = gridFs.Create(fname, new MongoGridFSCreateOptions()
+            Logger.DebugFormat("Creating file {0} on {1}", blobId, gridFs.Database.DatabaseNamespace.DatabaseName);
+            var stream = gridFs.OpenUploadStream(fname, new GridFSUploadOptions()
             {
-                ContentType = MimeTypes.GetMimeType(fname),
-                UploadDate = DateTime.UtcNow,
-                Id = (string)blobId
+                Metadata = new BsonDocument
+                {
+                    { "contentType",  MimeTypes.GetMimeType(fname)},
+                    { "uploadDate", DateTime.UtcNow }
+                }
             });
 
             return new BlobWriter(blobId, stream, fname);
@@ -143,22 +150,22 @@ namespace Jarvis.DocumentStore.Core.Storage
             );
         }
 
-        MongoGridFS GetGridFsByFormat(DocumentFormat format)
+        GridFSBucket GetGridFsByFormat(DocumentFormat format)
         {
             return _fs.GetOrAdd(format, CreateGridFsForFormat);
         }
 
-        MongoGridFS CreateGridFsForFormat(DocumentFormat format)
+        GridFSBucket CreateGridFsForFormat(DocumentFormat format)
         {
-            var settings = new MongoGridFSSettings()
+            var settings = new GridFSBucketOptions()
             {
-                Root = format
+                BucketName = format
             };
 
-            return _database.GetGridFS(settings);
+            return new GridFSBucket(_database, settings);
         }
 
-        MongoGridFS GetGridFsByBlobId(BlobId id)
+        GridFSBucket GetGridFsByBlobId(BlobId id)
         {
             return GetGridFsByFormat(id.Format);
         }
