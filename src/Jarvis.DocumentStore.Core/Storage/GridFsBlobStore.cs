@@ -54,7 +54,8 @@ namespace Jarvis.DocumentStore.Core.Storage
                 Metadata = new BsonDocument
                 {
                     { "contentType",  MimeTypes.GetMimeType(fname)},
-                    { "uploadDate", DateTime.UtcNow }
+                    { "uploadDate", DateTime.UtcNow },
+                    { "_id" , (string) blobId}
                 }
             });
 
@@ -65,13 +66,16 @@ namespace Jarvis.DocumentStore.Core.Storage
         {
             var gridFs = GetGridFsByBlobId(blobId);
 
-            Logger.DebugFormat("Creating file {0} on {1}", blobId, gridFs.DatabaseName);
+            Logger.DebugFormat("Creating file {0} on {1}", blobId, gridFs.Database.DatabaseNamespace.DatabaseName);
             Delete(blobId);
-            return gridFs.Create(fname, new MongoGridFSCreateOptions()
+            return gridFs.OpenUploadStream(fname, new GridFSUploadOptions()
             {
-                ContentType = MimeTypes.GetMimeType(fname),
-                UploadDate = DateTime.UtcNow,
-                Id = (string)blobId
+                Metadata = new BsonDocument
+                {
+                    { "contentType",  MimeTypes.GetMimeType(fname)},
+                    { "uploadDate", DateTime.UtcNow },
+                    { "_id" , (string) blobId}
+                }
             });
         }
 
@@ -79,8 +83,8 @@ namespace Jarvis.DocumentStore.Core.Storage
         {
             var gridFs = GetGridFsByBlobId(blobId);
 
-            Logger.DebugFormat("GetDescriptor for file {0} on {1}", blobId, gridFs.DatabaseName);
-            var s = gridFs.FindOneById((string)blobId);
+            Logger.DebugFormat("GetDescriptor for file {0} on {1}", blobId, gridFs.Database.DatabaseNamespace.DatabaseName);
+            var s = gridFs.Find(Builders<GridFSFileInfo>.Filter.Eq("_id", (String)blobId)).FirstOrDefault();
             if (s == null)
             {
                 var message = string.Format("Descriptor for file {0} not found!", blobId);
@@ -93,21 +97,22 @@ namespace Jarvis.DocumentStore.Core.Storage
         public void Delete(BlobId blobId)
         {
             var gridFs = GetGridFsByBlobId(blobId);
-            Logger.DebugFormat("Deleting file {0} on {1}", blobId, gridFs.DatabaseName);
-            gridFs.DeleteById((string)blobId);
+            Logger.DebugFormat("Deleting file {0} on {1}", blobId, gridFs.Database.DatabaseNamespace.DatabaseName);
+            gridFs.Delete((string)blobId);
         }
 
         public string Download(BlobId blobId, string folder)
         {
             var gridFs = GetGridFsByBlobId(blobId);
 
-            Logger.DebugFormat("Downloading file {0} on {1} to folder {2}", blobId, gridFs.DatabaseName, folder);
+            Logger.DebugFormat("Downloading file {0} on {1} to folder {2}", blobId, gridFs.Database.DatabaseNamespace.DatabaseName, folder);
 
             if (!Directory.Exists(folder))
                 Directory.CreateDirectory(folder);
 
-            var s = gridFs.FindOneById((string)blobId);
-            var localFileName = Path.Combine(folder, s.Name);
+            var s = gridFs.Find(Builders<GridFSFileInfo>.Filter.Eq("_id", (String)blobId)).FirstOrDefault();
+
+            var localFileName = Path.Combine(folder, s.Metadata["name"]);
             gridFs.Download(localFileName, s);
             return localFileName;
         }
