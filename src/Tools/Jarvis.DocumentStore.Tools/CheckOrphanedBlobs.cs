@@ -27,11 +27,10 @@ namespace Jarvis.DocumentStore.Tools
             var urlReadModel = new MongoUrl(ConfigurationManager.AppSettings["mainDb"]);
             var clientReadModel = new MongoClient(urlReadModel);
 
-            var dbReadModel = clientReadModel.GetServer().GetDatabase(urlReadModel.DatabaseName);
-            MongoCollection<BsonDocument> _descriptorCollection = dbReadModel.GetCollection("rm.DocumentDescriptor");
+            var dbReadModel = clientReadModel.GetDatabase(urlReadModel.DatabaseName);
+            IMongoCollection<BsonDocument> _descriptorCollection = dbReadModel.GetCollection<BsonDocument>("rm.DocumentDescriptor");
 
-            var allBlobs = _descriptorCollection.FindAll()
-                .SetFields("Formats.v.BlobId");
+            var allBlobs = _descriptorCollection.Find(Builders<BsonDocument>.Filter.Empty).ToEnumerable();
 
             HashSet<String> allValidBlobs = new HashSet<string>();
 
@@ -76,15 +75,15 @@ namespace Jarvis.DocumentStore.Tools
                     var uri = new MongoUrl(ConfigurationManager.AppSettings[connectionString]);
                     var client = new MongoClient(uri);
 
-                    var database = client.GetServer().GetDatabase(uri.DatabaseName);
-                    var settings = new MongoGridFSSettings()
+                    var database = client.GetDatabase(uri.DatabaseName);
+                    var bucket = new GridFSBucket(database, new GridFSBucketOptions
                     {
-                        Root = format
-                    };
-                    var gridfs = database.GetGridFS(settings);
+                        BucketName = format,
+                    });
+
                     foreach (var blobToDelete in blobsToDelete)
                     {
-                        gridfs.DeleteById(blobToDelete);
+                        bucket.Delete(blobToDelete);
                         Console.WriteLine("Deleted {0} in database {1}", blobToDelete, ConfigurationManager.AppSettings[connectionString]);
                     }
                 }
@@ -107,10 +106,10 @@ namespace Jarvis.DocumentStore.Tools
             var uri = new MongoUrl(ConfigurationManager.AppSettings[connectionString]);
             var client = new MongoClient(uri);
 
-            var database = client.GetServer().GetDatabase(uri.DatabaseName);
-            MongoCollection<BsonDocument> blobStoreCollection = database.GetCollection(type + ".files");
+            var database = client.GetDatabase(uri.DatabaseName);
+            IMongoCollection<BsonDocument> blobStoreCollection = database.GetCollection<BsonDocument>(type + ".files");
 
-            var allOriginals = blobStoreCollection.FindAll();
+            var allOriginals = blobStoreCollection.Find(Builders<BsonDocument>.Filter.Empty).ToEnumerable();
             HashSet<String> blobToDelete = new HashSet<string>();
 
             foreach (var blob in allOriginals)
