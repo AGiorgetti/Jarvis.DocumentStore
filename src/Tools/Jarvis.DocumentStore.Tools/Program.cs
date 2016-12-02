@@ -109,7 +109,13 @@ this should be changed to
                 CheckQueuedTikaScheduledJobs.PerformCheck();
                 return false;
             });
-          
+
+            commands.Add("Start sync artifacts job", () =>
+            {
+                ArtifactSyncJob.StartSync();
+                return false;
+            });
+
             Menu(commands.Keys.ToList());
             CommandLoop(c =>
             {
